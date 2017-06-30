@@ -44,9 +44,14 @@ const int MODE_AUTO = 10;
 const int MODE_ON = 11;
 const int MODE_OFF = 12;
 
-const float HUMIDTITY_LIMIT = 53.0;
-const float TEMP_LIMIT = 14.0;
+const long MAX_FORCED_MODE_DURATION = 12L * 60L * 60L * 1000L; // 12h
 
+const float HUMIDTITY_LIMIT = 52.0;
+const float HUMIDTITY_LIMIT_TOLERANCE = 1.0;
+const float ABS_HUMIDITY_LIMIT_TOLERANCE = 0.25;
+
+const float TEMP_IN_LIMIT = 14.0;
+const float TEMP_OUT_LIMIT = 28.0;
 
 // See guide for details on sensor wiring and usage:
 //   https://learn.adafruit.com/dht/overview
@@ -75,6 +80,8 @@ long lastPageSwitch;
 byte pageCount = 0;
 
 int mode;
+long forceModeOnTime=0;
+
 String why = "Starting ...";
 long lastControl;
 
@@ -188,7 +195,7 @@ void showPageThree() {
     lcd.clear();
 
     lcd.setCursor(0,0);
-    lcd.print("Up:   ");lcd.print((millis()/1000/60));lcd.print(" min");
+    lcd.print("Up:   ");lcd.print((millis()/1000/60/60));lcd.print("h ");lcd.print(((millis()/1000/60)%60));lcd.print("min");
 
     lcd.setCursor(0,1);
     lcd.print("V-In: ");lcd.print(doRound2(volt), 2); lcd.print("V");
@@ -211,7 +218,7 @@ void setup() {
     lcd.setCursor(0, 0);
     lcd.print("***FanControl***");
     lcd.setCursor(0, 1);
-    lcd.print("***   1.26   ***");
+    lcd.print("***   1.32   ***");
     time = millis() - time;
     Serial.print("Took "); Serial.print(time); Serial.println(" ms");
     lcd.setBacklight(WHITE);
@@ -324,6 +331,7 @@ void loop() {
         if (buttons & BUTTON_UP) {
             if (mode == MODE_AUTO) {
                 mode = MODE_ON;
+                forceModeOnTime = millis();
                 Serial.println("MODE=ON");
             } else {
                 mode = MODE_AUTO;
@@ -338,6 +346,7 @@ void loop() {
         if (buttons & BUTTON_DOWN) {
             if (mode == MODE_AUTO) {
                 mode = MODE_OFF;
+                forceModeOnTime = millis();
                 Serial.println("MODE=OFF");
             } else {
                 mode = MODE_AUTO;
@@ -368,32 +377,58 @@ void loop() {
 
 void controlFan() {
     if (mode == MODE_AUTO) {
-        if (tempInside < TEMP_LIMIT) {
+        if (tempInside < TEMP_IN_LIMIT) {
             fanOff();
             why = "Temp In < ";
-            why = why + ((int)TEMP_LIMIT);
+            why = why + ((int)TEMP_IN_LIMIT);
             why = why + (char)223;
-        } else if (humidityInside < HUMIDTITY_LIMIT) {
+        } else if (tempOutside > TEMP_OUT_LIMIT) {
+            fanOff();
+            why = "Temp Out > ";
+            why = why + ((int)TEMP_OUT_LIMIT);
+            why = why + (char)223;
+        } else if ((humidityInside < (HUMIDTITY_LIMIT - HUMIDTITY_LIMIT_TOLERANCE)) && fanRunning) {
             fanOff();
             why = "Humi: In < ";
             why = why + ((int)HUMIDTITY_LIMIT);
             why = why + "%";
-        } else if (absHumidityOutside > absHumidityInside) {
+        } else if ((humidityInside < HUMIDTITY_LIMIT) && !fanRunning) {
+            fanOff();
+            why = "Humi: In < ";
+            why = why + ((int)HUMIDTITY_LIMIT);
+            why = why + "%";
+        } else if ((absHumidityOutside >= absHumidityInside) && fanRunning) {
             fanOff();
             why = "A-Humi: Out > In";
-        } else if (absHumidityOutside < absHumidityInside) {
+        } else if (((absHumidityOutside + ABS_HUMIDITY_LIMIT_TOLERANCE) >= absHumidityInside) && !fanRunning) {
+            fanOff();
+            why = "A-Humi: Out > In";    
+        } else if ((absHumidityOutside < absHumidityInside) && fanRunning)  {
             fanOn();
-            why = "Drying ...";
+            why = "Drying ...";   
+        } else if (((absHumidityOutside + ABS_HUMIDITY_LIMIT_TOLERANCE) < absHumidityInside) && !fanRunning)  {
+            fanOn();
+            why = "Drying ...";     
         } else {
             fanOff();
             why = "why?";
         }
     } else if (mode == MODE_ON) {
-        fanOn();
-        why = "Forced ON-Mode";
+        if (((millis() - forceModeOnTime) > MAX_FORCED_MODE_DURATION) || (absHumidityOutside >= absHumidityInside)) {
+          fanOff();
+          mode = MODE_AUTO;
+        } else {
+          fanOn();
+          why = "Forced ON-Mode";
+        }
     } else if (mode == MODE_OFF) {
-        fanOff();
-        why = "Forced OFF-Mode";
+        if ((millis() - forceModeOnTime) > MAX_FORCED_MODE_DURATION) {
+          fanOff();
+          mode = MODE_AUTO;
+        } else {      
+          fanOff();
+          why = "Forced OFF-Mode";
+        }
     } else {
       why = "Unkown Mode " + mode;
     }
