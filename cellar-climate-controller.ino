@@ -195,8 +195,8 @@ void showPageThree() {
     lcd.clear();
 
     lcd.setCursor(0,0);
-    lcd.print("Up:   ");lcd.print((millis()/1000/60/60));lcd.print("h ");lcd.print(((millis()/1000/60)%60));lcd.print("min");
-
+    long minutes = millis() / 1000 / 60;
+    lcd.print("Up: ");lcd.print((minutes/60/24));lcd.print("d ");lcd.print(((minutes/60)%24));lcd.print("h ");lcd.print((minutes%60));lcd.print("m          ");
     lcd.setCursor(0,1);
     lcd.print("V-In: ");lcd.print(doRound2(volt), 2); lcd.print("V");
 }
@@ -218,7 +218,7 @@ void setup() {
     lcd.setCursor(0, 0);
     lcd.print("***FanControl***");
     lcd.setCursor(0, 1);
-    lcd.print("***   1.33   ***");
+    lcd.print("***   1.34   ***");
     time = millis() - time;
     Serial.print("Took "); Serial.print(time); Serial.println(" ms");
     lcd.setBacklight(WHITE);
@@ -399,10 +399,10 @@ void controlFan() {
             why = why + "%";
         } else if ((absHumidityOutside >= absHumidityInside) && fanRunning) {
             fanOff();
-            why = "A-Humi: Out > In";
+            why = "Humi: Out > In";
         } else if (((absHumidityOutside + ABS_HUMIDITY_LIMIT_TOLERANCE) >= absHumidityInside) && !fanRunning) {
             fanOff();
-            why = "A-Humi: Out > In";    
+            why = "Humi: Out > In";    
         } else if ((absHumidityOutside < absHumidityInside) && fanRunning)  {
             fanOn();
             why = "Drying ...";   
