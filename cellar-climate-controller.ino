@@ -46,7 +46,7 @@ const int MODE_OFF = 12;
 
 const long MAX_FORCED_MODE_DURATION = 12L * 60L * 60L * 1000L; // 12h
 
-const float HUMIDTITY_LIMIT = 52.0;
+const float HUMIDTITY_LIMIT = 53.5;
 const float HUMIDTITY_LIMIT_TOLERANCE = 1.0;
 const float ABS_HUMIDITY_LIMIT_TOLERANCE = 0.25;
 
@@ -218,7 +218,7 @@ void setup() {
     lcd.setCursor(0, 0);
     lcd.print("***FanControl***");
     lcd.setCursor(0, 1);
-    lcd.print("***   1.32   ***");
+    lcd.print("***   1.33   ***");
     time = millis() - time;
     Serial.print("Took "); Serial.print(time); Serial.println(" ms");
     lcd.setBacklight(WHITE);
