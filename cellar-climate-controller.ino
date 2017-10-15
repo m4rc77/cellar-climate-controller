@@ -203,7 +203,9 @@ void showPageThree() {
 
 void setup() {
     pinMode(FAN_PIN_ON, OUTPUT);
-    pinMode(FAN_PIN_RPM,  INPUT);
+    pinMode(FAN_PIN_RPM, INPUT);
+    pinMode(DHT_PIN_OUTSIDE, INPUT_PULLUP);
+    pinMode(DHT_PIN_INSIDE, INPUT_PULLUP);
 
     attachInterrupt(digitalPinToInterrupt(FAN_PIN_RPM), rpm, RISING);
 
@@ -218,7 +220,7 @@ void setup() {
     lcd.setCursor(0, 0);
     lcd.print("***FanControl***");
     lcd.setCursor(0, 1);
-    lcd.print("***   1.34   ***");
+    lcd.print("***   1.35   ***");
     time = millis() - time;
     Serial.print("Took "); Serial.print(time); Serial.println(" ms");
     lcd.setBacklight(WHITE);
@@ -238,6 +240,7 @@ void setup() {
     Serial.print  ("Sensor:       "); Serial.println(sensor.name);
     Serial.print  ("Driver Ver:   "); Serial.println(sensor.version);
     Serial.print  ("Unique ID:    "); Serial.println(sensor.sensor_id);
+    Serial.print  ("Min Delay:    "); Serial.print(sensor.min_delay/1000); Serial.println(" ms");
     Serial.print  ("Max Value:    "); Serial.print(sensor.max_value); Serial.println(" *C");
     Serial.print  ("Min Value:    "); Serial.print(sensor.min_value); Serial.println(" *C");
     Serial.print  ("Resolution:   "); Serial.print(sensor.resolution); Serial.println(" *C");
@@ -249,6 +252,7 @@ void setup() {
     Serial.print  ("Sensor:       "); Serial.println(sensor.name);
     Serial.print  ("Driver Ver:   "); Serial.println(sensor.version);
     Serial.print  ("Unique ID:    "); Serial.println(sensor.sensor_id);
+    Serial.print  ("Min Delay:    "); Serial.print(sensor.min_delay/1000); Serial.println(" ms");
     Serial.print  ("Max Value:    "); Serial.print(sensor.max_value); Serial.println("%");
     Serial.print  ("Min Value:    "); Serial.print(sensor.min_value); Serial.println("%");
     Serial.print  ("Resolution:   "); Serial.print(sensor.resolution); Serial.println("%");
@@ -259,6 +263,7 @@ void setup() {
     Serial.print  ("Sensor:       "); Serial.println(sensor.name);
     Serial.print  ("Driver Ver:   "); Serial.println(sensor.version);
     Serial.print  ("Unique ID:    "); Serial.println(sensor.sensor_id);
+    Serial.print  ("Min Delay:    "); Serial.print(sensor.min_delay/1000); Serial.println(" ms");
     Serial.print  ("Max Value:    "); Serial.print(sensor.max_value); Serial.println(" *C");
     Serial.print  ("Min Value:    "); Serial.print(sensor.min_value); Serial.println(" *C");
     Serial.print  ("Resolution:   "); Serial.print(sensor.resolution); Serial.println(" *C");
@@ -270,6 +275,7 @@ void setup() {
     Serial.print  ("Sensor:       "); Serial.println(sensor.name);
     Serial.print  ("Driver Ver:   "); Serial.println(sensor.version);
     Serial.print  ("Unique ID:    "); Serial.println(sensor.sensor_id);
+    Serial.print  ("Min Delay:    "); Serial.print(sensor.min_delay/1000); Serial.println(" ms");
     Serial.print  ("Max Value:    "); Serial.print(sensor.max_value); Serial.println("%");
     Serial.print  ("Min Value:    "); Serial.print(sensor.min_value); Serial.println("%");
     Serial.print  ("Resolution:   "); Serial.print(sensor.resolution); Serial.println("%");
@@ -281,6 +287,7 @@ void setup() {
     pageCount = 1;
     showFirstPage = true;
     lastControl= millis();
+    delay(1000);
 }
 
 void loop() {
