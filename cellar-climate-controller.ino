@@ -30,14 +30,17 @@ Adafruit_RGBLCDShield lcd = Adafruit_RGBLCDShield();
 #define WHITE 0x7
 
 const int DHT_PIN_INSIDE = 2;
-const int DHT_PIN_OUTSIDE = 4;
+const int DHT_PIN_OUTSIDE_1 = 4;
+const int DHT_PIN_OUTSIDE_2 = 7;
 
 const int VIN_MEASURE_PIN = A0;
 
 const int FAN_PIN_ON =  8;
 const int FAN_PIN_RPM = 3;
 
-const int PAGE_DISPLAY_DURATION = 5000;
+const int LED_PIN = 6;
+
+const int PAGE_DISPLAY_DURATION = 3000;
 const int CONTROL_INTERVAL = 10000;
 
 const int MODE_AUTO = 10;
@@ -50,13 +53,24 @@ const float HUMIDTITY_LIMIT = 53.5;
 const float HUMIDTITY_LIMIT_TOLERANCE = 1.0;
 const float ABS_HUMIDITY_LIMIT_TOLERANCE = 0.25;
 
+const float ABS_HUMIDITY_ERROR = 999.0;
+
 const float TEMP_IN_LIMIT = 14.0;
 const float TEMP_OUT_LIMIT = 28.0;
+
+const long blinkIntervalSlow = 1000;
+const long blinkIntervalFast = 300;
+
+const byte OK = 0;
+const byte WARN = 1;
+const byte ERR = 2;
 
 // See guide for details on sensor wiring and usage:
 //   https://learn.adafruit.com/dht/overview
 DHT_Unified dhtIn (DHT_PIN_INSIDE,  DHT22);
-DHT_Unified dhtOut(DHT_PIN_OUTSIDE, DHT22);
+DHT_Unified dhtOut1(DHT_PIN_OUTSIDE_1, DHT22);
+DHT_Unified dhtOut2(DHT_PIN_OUTSIDE_2, DHT22);
+
 
 volatile int fanRpmCounter;
 int fanRpm;
@@ -69,15 +83,21 @@ long tempCheckDelay;
 boolean tempLastInside = false;
 
 float tempInside;
-float tempOutside;
+float tempOutside1;
+float tempOutside2;
 float humidityInside;
-float humidityOutside;
+float humidityOutside1;
+float humidityOutside2;
 float absHumidityInside;
-float absHumidityOutside;
+float absHumidityOutside1;
+float absHumidityOutside2;
 
-boolean showFirstPage = true;
 long lastPageSwitch;
-byte pageCount = 0;
+byte page = 1;
+
+byte state = OK;
+int ledState = LOW; 
+long lastLedChange;
 
 int mode;
 long forceModeOnTime=0;
@@ -117,7 +137,7 @@ void calculateFanRpm() {
     Serial.print(fanRpm, DEC); Serial.println(" rpm");
 }
 
-void showPageOne(boolean absHumidity) {
+void showTemperaturePage(boolean absHumidity, boolean showOutside1) {
     lcd.setCursor(0,0);
     lcd.print("I:");
     printTemp(tempInside);
@@ -129,11 +149,20 @@ void showPageOne(boolean absHumidity) {
 
     lcd.setCursor(0,1);
     lcd.print("O:");
-    printTemp(tempOutside);
-    if (absHumidity) {
-        printAbsHumidity(absHumidityOutside);
+    if (showOutside1) {
+        printTemp(tempOutside1);
+        if (absHumidity) {
+            printAbsHumidity(absHumidityOutside1);
+        } else {
+            printHumidity(humidityOutside1);
+        }
     } else {
-        printHumidity(humidityOutside);
+        printTemp(tempOutside2);
+        if (absHumidity) {
+            printAbsHumidity(absHumidityOutside2);
+        } else {
+            printHumidity(humidityOutside2);
+        }
     }
 }
 
@@ -163,12 +192,21 @@ void printHumidity(float humidity) {
         } else if (0 <= humidity && humidity < 10) {
             lcd.print("  ");
         }
-        lcd.print(doRound(humidity), 1); lcd.print("% ");
+        lcd.print(doRound(humidity), 1); lcd.print("%");
+
+        // Handle failed sensor ...
+        if (isSensorFaulty(humidity)) {
+            lcd.print("!");
+        } else {
+            lcd.print(" ");
+        }
     }
 }
 
 void printAbsHumidity(float humidity) {
-    if (10 <= humidity) {
+    if (humidity == ABS_HUMIDITY_ERROR) {
+        lcd.print(" ERR!!!");
+    } else if (10 <= humidity) {
         lcd.print(" ");
     } else if (0 <= humidity && humidity < 10) {
         lcd.print("  ");
@@ -176,7 +214,7 @@ void printAbsHumidity(float humidity) {
     lcd.print(doRound(humidity), 1); lcd.print("g");
 }
 
-void showPageTwo() {
+void showFanInfoPage() {
     lcd.clear();
 
     lcd.setCursor(0,0);
@@ -191,7 +229,7 @@ void showPageTwo() {
     }
 }
 
-void showPageThree() {
+void showSystemInfoPage() {
     lcd.clear();
 
     lcd.setCursor(0,0);
@@ -204,8 +242,11 @@ void showPageThree() {
 void setup() {
     pinMode(FAN_PIN_ON, OUTPUT);
     pinMode(FAN_PIN_RPM, INPUT);
-    pinMode(DHT_PIN_OUTSIDE, INPUT_PULLUP);
+    pinMode(DHT_PIN_OUTSIDE_1, INPUT_PULLUP);
+    pinMode(DHT_PIN_OUTSIDE_2, INPUT_PULLUP);
     pinMode(DHT_PIN_INSIDE, INPUT_PULLUP);
+    pinMode(LED_PIN, OUTPUT);
+    ledOff();
 
     attachInterrupt(digitalPinToInterrupt(FAN_PIN_RPM), rpm, RISING);
 
@@ -220,7 +261,7 @@ void setup() {
     lcd.setCursor(0, 0);
     lcd.print("***FanControl***");
     lcd.setCursor(0, 1);
-    lcd.print("***   1.35   ***");
+    lcd.print("***   2.01   ***");
     time = millis() - time;
     Serial.print("Took "); Serial.print(time); Serial.println(" ms");
     lcd.setBacklight(WHITE);
@@ -230,7 +271,8 @@ void setup() {
 
     // Initialize device.
     dhtIn.begin();
-    dhtOut.begin();
+    dhtOut1.begin();
+    dhtOut2.begin();
 
     // Print temperature sensor details.
     sensor_t sensor;
@@ -257,7 +299,7 @@ void setup() {
     Serial.print  ("Min Value:    "); Serial.print(sensor.min_value); Serial.println("%");
     Serial.print  ("Resolution:   "); Serial.print(sensor.resolution); Serial.println("%");
     Serial.println("------------------------------------");
-    dhtOut.temperature().getSensor(&sensor);
+    dhtOut1.temperature().getSensor(&sensor);
     Serial.println("OUTSIDE: ------------------");
     Serial.println("Temperature");
     Serial.print  ("Sensor:       "); Serial.println(sensor.name);
@@ -269,7 +311,7 @@ void setup() {
     Serial.print  ("Resolution:   "); Serial.print(sensor.resolution); Serial.println(" *C");
     Serial.println("------------------------------------");
     // Print humidity sensor details.
-    dhtOut.humidity().getSensor(&sensor);
+    dhtOut1.humidity().getSensor(&sensor);
     Serial.println("------------------------------------");
     Serial.println("Humidity");
     Serial.print  ("Sensor:       "); Serial.println(sensor.name);
@@ -279,13 +321,35 @@ void setup() {
     Serial.print  ("Max Value:    "); Serial.print(sensor.max_value); Serial.println("%");
     Serial.print  ("Min Value:    "); Serial.print(sensor.min_value); Serial.println("%");
     Serial.print  ("Resolution:   "); Serial.print(sensor.resolution); Serial.println("%");
+    Serial.println("------------------------------------");
+    dhtOut2.temperature().getSensor(&sensor);
+    Serial.println("OUTSIDE: ------------------");
+    Serial.println("Temperature");
+    Serial.print  ("Sensor:       "); Serial.println(sensor.name);
+    Serial.print  ("Driver Ver:   "); Serial.println(sensor.version);
+    Serial.print  ("Unique ID:    "); Serial.println(sensor.sensor_id);
+    Serial.print  ("Min Delay:    "); Serial.print(sensor.min_delay/1000); Serial.println(" ms");
+    Serial.print  ("Max Value:    "); Serial.print(sensor.max_value); Serial.println(" *C");
+    Serial.print  ("Min Value:    "); Serial.print(sensor.min_value); Serial.println(" *C");
+    Serial.print  ("Resolution:   "); Serial.print(sensor.resolution); Serial.println(" *C");
+    Serial.println("------------------------------------");
+    // Print humidity sensor details.
+    dhtOut2.humidity().getSensor(&sensor);
+    Serial.println("------------------------------------");
+    Serial.println("Humidity");
+    Serial.print  ("Sensor:       "); Serial.println(sensor.name);
+    Serial.print  ("Driver Ver:   "); Serial.println(sensor.version);
+    Serial.print  ("Unique ID:    "); Serial.println(sensor.sensor_id);
+    Serial.print  ("Min Delay:    "); Serial.print(sensor.min_delay/1000); Serial.println(" ms");
+    Serial.print  ("Max Value:    "); Serial.print(sensor.max_value); Serial.println("%");
+    Serial.print  ("Min Value:    "); Serial.print(sensor.min_value); Serial.println("%");
+    Serial.print  ("Resolution:   "); Serial.print(sensor.resolution); Serial.println("%");
+    
     // Set delay between sensor readings based on sensor details.
-
-    tempCheckDelay = sensor.min_delay / 1000;
+    tempCheckDelay = sensor.min_delay / 1000 * 5;
 
     mode = MODE_AUTO;
-    pageCount = 1;
-    showFirstPage = true;
+    page = 1;
     lastControl= millis();
     delay(1000);
 }
@@ -303,32 +367,42 @@ void loop() {
     if(tempLastCheck + tempCheckDelay <= millis()) {
         if (tempLastInside) {
             tempCheckOutside();
-            absHumidityOutside = calcAbsHumidity(tempOutside, humidityOutside);
-            Serial.print("Abs Humidity Outside ");Serial.print(absHumidityOutside);Serial.println("g/m³");
         } else {
             tempCheckInside();
-            absHumidityInside = calcAbsHumidity(tempInside, humidityInside);
-            Serial.println("Abs Humidity inside ");Serial.print(absHumidityInside);Serial.println("g/m³");
         }
         tempLastInside = !tempLastInside;
         tempLastCheck = millis();
     }
 
     if(lastPageSwitch + PAGE_DISPLAY_DURATION <= millis()) {
-        if (showFirstPage) {
-            showPageOne((pageCount+1) % 3 == 0);
-            if ((pageCount+1) % 3 == 0) {
-                showFirstPage = false;
-            }
-        } else {
-            if (pageCount % 6 == 0) {
-                showPageThree();
-            } else {
-                showPageTwo();
-            }
-            showFirstPage = true;
+        switch (page) {
+            case 1:
+                showTemperaturePage(false, true);
+                page = 2;
+                break;
+            case 2:
+                showTemperaturePage(true, true);
+                page = 3;            
+                break;
+            case 3:
+                showTemperaturePage(false, false);
+                page = 4;  
+                break;
+            case 4:
+                showTemperaturePage(true, false);
+                page = 5;  
+                break; 
+            case 5:
+                showFanInfoPage();
+                page = 6;  
+                break; 
+            case 6:
+                showSystemInfoPage();
+                page = 1;  
+                break;                                     
+            default:
+                page = 1;
         }
-        pageCount++;
         lastPageSwitch  = millis();
     }
 
@@ -345,9 +419,9 @@ void loop() {
                 Serial.println("MODE=AUTO");
             }
             controlFan();
-            showPageTwo();
+            showFanInfoPage();
             lastPageSwitch  = millis();
-            showFirstPage = true;
+            page = 1;
             delay(500);
         }
         if (buttons & BUTTON_DOWN) {
@@ -360,9 +434,9 @@ void loop() {
                 Serial.println("MODE=AUTO");
             }
             controlFan();
-            showPageTwo();
+            showFanInfoPage();
             lastPageSwitch  = millis();
-            showFirstPage = true;
+            page = 1;
             delay(500);
         }
         if (buttons & BUTTON_LEFT) {
@@ -376,13 +450,57 @@ void loop() {
         }
     }
 
-    if(lastControl + CONTROL_INTERVAL <= millis()) {
+    if (lastControl + CONTROL_INTERVAL <= millis()) {
         controlFan();
+        checkFaultySensors();
         lastControl = millis();
+    }
+
+    blinkLedOnError();
+}
+
+void blinkLedOnError() {
+    int interval;
+    if (state == OK) {
+        ledOff();
+        return;
+    } else if (state == WARN) {
+        interval = blinkIntervalSlow;
+    } else {
+        interval = blinkIntervalFast;
+    }
+  
+    if (lastLedChange + interval <= millis()) {
+        if (ledState == LOW) {
+            ledOn();
+            ledState = HIGH;
+        } else {
+            ledOff();
+            ledState = LOW;
+        }
+        lastLedChange = millis();
     }
 }
 
 void controlFan() {
+    float absHumidityOutside;
+    float tempOutside;
+    if (absHumidityOutside1 != ABS_HUMIDITY_ERROR && absHumidityOutside1 != ABS_HUMIDITY_ERROR) {
+        if (absHumidityOutside1 > absHumidityOutside2) {
+            absHumidityOutside = absHumidityOutside1;
+            tempOutside = tempOutside1;
+        } else {
+            absHumidityOutside = absHumidityOutside2;
+            tempOutside = tempOutside2;
+        }
+    } else if (absHumidityOutside1 != ABS_HUMIDITY_ERROR) {
+        absHumidityOutside = absHumidityOutside1;
+        tempOutside = tempOutside1;
+    } else {
+        absHumidityOutside = absHumidityOutside2;
+        tempOutside = tempOutside2;
+    }
+  
     if (mode == MODE_AUTO) {
         if (tempInside < TEMP_IN_LIMIT) {
             fanOff();
@@ -462,25 +580,69 @@ void tempCheckInside() {
     humidityInside = event.relative_humidity;
 
     debugTempAndHumidity(tempInside, humidityInside, "Inside");
+
+    absHumidityInside = calcAbsHumidity(tempInside, humidityInside);
+    Serial.println("Abs Humidity inside ");Serial.print(absHumidityInside);Serial.println("g/m³");
 }
 
 void tempCheckOutside() {
-    sensors_event_t event;
-    dhtOut.temperature().getEvent(&event);
-    tempOutside = event.temperature;
-    dhtOut.humidity().getEvent(&event);
-    humidityOutside = event.relative_humidity;
+  
+    sensors_event_t event1;
+    dhtOut1.temperature().getEvent(&event1);
+    tempOutside1 = event1.temperature;
+    dhtOut1.humidity().getEvent(&event1);
+    humidityOutside1 = event1.relative_humidity;
 
-    debugTempAndHumidity(tempOutside, humidityOutside, "Outside");
+    debugTempAndHumidity(tempOutside1, humidityOutside1, "Outside1");
+    
+    absHumidityOutside1 = calcAbsHumidity(tempOutside1, humidityOutside1);
+    Serial.print("Abs Humidity Outside1 ");Serial.print(absHumidityOutside1);Serial.println("g/m³");
+ 
+    sensors_event_t event2;
+    dhtOut2.temperature().getEvent(&event2);
+    tempOutside2 = event2.temperature;
+    dhtOut2.humidity().getEvent(&event2);
+    humidityOutside2 = event2.relative_humidity;
+
+    debugTempAndHumidity(tempOutside2, humidityOutside2, "Outside2");
+    
+    absHumidityOutside2 = calcAbsHumidity(tempOutside2, humidityOutside2);
+    Serial.print("Abs Humidity Outside2 ");Serial.print(absHumidityOutside2);Serial.println("g/m³");
+}
+
+void checkFaultySensors() {
+  if (!isSensorFaulty(humidityOutside1) && !isSensorFaulty(humidityOutside2) && !isSensorFaulty(humidityInside)) {
+    state = OK;
+  } else if ( (isSensorFaulty(humidityOutside1) && isSensorFaulty(humidityOutside2)) || 
+              (isSensorFaulty(humidityOutside1) && isSensorFaulty(humidityInside)) ||
+              (isSensorFaulty(humidityOutside2) && isSensorFaulty(humidityInside)) ) {
+    state = ERR;
+  } else {
+    state = WARN;  
+  }
+}
+
+boolean isSensorFaulty(float humidity) {
+    if (isnan(humidity)) {
+        return false; // do not consider missing sensor as faulty
+    } else  if (humidity > 99.0 || humidity < 1.0) {
+        return true;
+    } else {
+        return false;
+    }
 }
 
 float calcAbsHumidity(float temperature, float humidity) {
     if (isnan(temperature)) {
-        return 0;
+        return ABS_HUMIDITY_ERROR;
     }
     if (isnan(humidity)) {
-        return 0;
+        return ABS_HUMIDITY_ERROR;
     }
+    if (isSensorFaulty(humidity)) {
+      return ABS_HUMIDITY_ERROR;
+    }
+    
     // see https://carnotcycle.wordpress.com/2012/08/04/how-to-convert-relative-humidity-to-absolute-humidity/
     // gramms/m³ = ( 6.112 x e^[(17.67 x temp) / (temp + 243.5)] x humidity x 2.1674 ) / (273.15 + temp)
     float expo = (17.67 * temperature) / (temperature + 243.5);
@@ -507,4 +669,12 @@ float doRound(float val) {
 
 float doRound2(float val) {
     return round(val * 100) / 100.0;
+}
+
+void ledOn() {
+  digitalWrite(LED_PIN, HIGH);
+}
+
+void ledOff() {
+  digitalWrite(LED_PIN, LOW);
 }
