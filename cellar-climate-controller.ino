@@ -80,17 +80,17 @@ long fanCheckDelay = 2000;
 
 long tempLastCheck;
 long tempCheckDelay;
-boolean tempLastInside = false;
+byte temperatureToCheck = 0;
 
 float tempInside;
 float tempOutside1;
 float tempOutside2;
-float humidityInside;
-float humidityOutside1;
-float humidityOutside2;
-float absHumidityInside;
-float absHumidityOutside1;
-float absHumidityOutside2;
+float humidityInside = 0;
+float humidityOutside1 = 100;
+float humidityOutside2 = 100;
+float absHumidityInside = 0;
+float absHumidityOutside1 = ABS_HUMIDITY_ERROR;
+float absHumidityOutside2 = ABS_HUMIDITY_ERROR;
 
 long lastPageSwitch;
 byte page = 1;
@@ -261,7 +261,7 @@ void setup() {
     lcd.setCursor(0, 0);
     lcd.print("***FanControl***");
     lcd.setCursor(0, 1);
-    lcd.print("***   2.01   ***");
+    lcd.print("***   2.03   ***");
     time = millis() - time;
     Serial.print("Took "); Serial.print(time); Serial.println(" ms");
     lcd.setBacklight(WHITE);
@@ -346,7 +346,7 @@ void setup() {
     Serial.print  ("Resolution:   "); Serial.print(sensor.resolution); Serial.println("%");
     
     // Set delay between sensor readings based on sensor details.
-    tempCheckDelay = sensor.min_delay / 1000 * 5;
+    tempCheckDelay = (sensor.min_delay / 1000) * 4;
 
     mode = MODE_AUTO;
     page = 1;
@@ -365,12 +365,20 @@ void loop() {
     }
 
     if(tempLastCheck + tempCheckDelay <= millis()) {
-        if (tempLastInside) {
-            tempCheckOutside();
-        } else {
-            tempCheckInside();
+        switch (temperatureToCheck) {
+            case 0:
+                tempCheckInside();
+                temperatureToCheck = 1;
+                break;
+            case 1:
+                tempCheckOutside1();
+                temperatureToCheck = 2;
+                break;
+            case 2:
+                tempCheckOutside2();
+                temperatureToCheck = 0;
+                break;
         }
-        tempLastInside = !tempLastInside;
         tempLastCheck = millis();
     }
 
@@ -585,8 +593,7 @@ void tempCheckInside() {
     Serial.println("Abs Humidity inside ");Serial.print(absHumidityInside);Serial.println("g/m³");
 }
 
-void tempCheckOutside() {
-  
+void tempCheckOutside1() {
     sensors_event_t event1;
     dhtOut1.temperature().getEvent(&event1);
     tempOutside1 = event1.temperature;
@@ -597,7 +604,9 @@ void tempCheckOutside() {
     
     absHumidityOutside1 = calcAbsHumidity(tempOutside1, humidityOutside1);
     Serial.print("Abs Humidity Outside1 ");Serial.print(absHumidityOutside1);Serial.println("g/m³");
- 
+}
+
+void tempCheckOutside2() {
     sensors_event_t event2;
     dhtOut2.temperature().getEvent(&event2);
     tempOutside2 = event2.temperature;
@@ -625,7 +634,7 @@ void checkFaultySensors() {
 boolean isSensorFaulty(float humidity) {
     if (isnan(humidity)) {
         return false; // do not consider missing sensor as faulty
-    } else  if (humidity > 99.0 || humidity < 1.0) {
+    } else  if (humidity > 98.8 || humidity < 1.2) {
         return true;
     } else {
         return false;
