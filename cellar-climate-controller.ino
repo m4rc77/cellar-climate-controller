@@ -246,7 +246,7 @@ void setup() {
     pinMode(DHT_PIN_OUTSIDE_2, INPUT_PULLUP);
     pinMode(DHT_PIN_INSIDE, INPUT_PULLUP);
     pinMode(LED_PIN, OUTPUT);
-    ledOff();
+    ledOn();
 
     attachInterrupt(digitalPinToInterrupt(FAN_PIN_RPM), rpm, RISING);
 
@@ -261,7 +261,7 @@ void setup() {
     lcd.setCursor(0, 0);
     lcd.print("***FanControl***");
     lcd.setCursor(0, 1);
-    lcd.print("***   2.03   ***");
+    lcd.print("***   2.04   ***");
     time = millis() - time;
     Serial.print("Took "); Serial.print(time); Serial.println(" ms");
     lcd.setBacklight(WHITE);
@@ -633,7 +633,7 @@ void checkFaultySensors() {
 
 boolean isSensorFaulty(float humidity) {
     if (isnan(humidity)) {
-        return false; // do not consider missing sensor as faulty
+        return true;
     } else  if (humidity > 98.8 || humidity < 1.2) {
         return true;
     } else {
