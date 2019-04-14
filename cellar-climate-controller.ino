@@ -261,7 +261,7 @@ void setup() {
     lcd.setCursor(0, 0);
     lcd.print("***FanControl***");
     lcd.setCursor(0, 1);
-    lcd.print("***   2.04   ***");
+    lcd.print("***   2.05   ***");
     time = millis() - time;
     Serial.print("Took "); Serial.print(time); Serial.println(" ms");
     lcd.setBacklight(WHITE);
@@ -493,7 +493,7 @@ void blinkLedOnError() {
 void controlFan() {
     float absHumidityOutside;
     float tempOutside;
-    if (absHumidityOutside1 != ABS_HUMIDITY_ERROR && absHumidityOutside1 != ABS_HUMIDITY_ERROR) {
+    if (absHumidityOutside1 != ABS_HUMIDITY_ERROR && absHumidityOutside2 != ABS_HUMIDITY_ERROR) {
         if (absHumidityOutside1 > absHumidityOutside2) {
             absHumidityOutside = absHumidityOutside1;
             tempOutside = tempOutside1;
