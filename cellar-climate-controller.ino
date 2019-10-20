@@ -10,6 +10,7 @@
 #include <Adafruit_RGBLCDShield.h>
 #include <utility/Adafruit_MCP23017.h>
 #include <Adafruit_Sensor.h>
+#include "Adafruit_HTU21DF.h"
 #include <DHT.h>
 #include <DHT_U.h>
 #include <math.h>
@@ -31,7 +32,6 @@ Adafruit_RGBLCDShield lcd = Adafruit_RGBLCDShield();
 
 const int DHT_PIN_INSIDE = 2;
 const int DHT_PIN_OUTSIDE_1 = 4;
-const int DHT_PIN_OUTSIDE_2 = 7;
 
 const int VIN_MEASURE_PIN = A0;
 
@@ -49,9 +49,10 @@ const int MODE_OFF = 12;
 
 const long MAX_FORCED_MODE_DURATION = 12L * 60L * 60L * 1000L; // 12h
 
-const float HUMIDTITY_LIMIT = 53.5;
-const float HUMIDTITY_LIMIT_TOLERANCE = 1.0;
-const float ABS_HUMIDITY_LIMIT_TOLERANCE = 0.25;
+const float HUMIDTITY_LIMIT = 53.5; // humidity goal inside
+const float HUMIDTITY_LIMIT_TOLERANCE = 1.0; // add 1% of histeresis on inside
+const float ABS_HUMIDITY_LIMIT_TOLERANCE = 0.25; // add 0.25g histeresis on outside
+const float ABS_HUMIDITY_MIN_DIFF = 0.75; // only start ventilation if 0.75g of difference exists
 
 const float ABS_HUMIDITY_ERROR = 999.0;
 
@@ -69,8 +70,12 @@ const byte ERR = 2;
 //   https://learn.adafruit.com/dht/overview
 DHT_Unified dhtIn (DHT_PIN_INSIDE,  DHT22);
 DHT_Unified dhtOut1(DHT_PIN_OUTSIDE_1, DHT22);
-DHT_Unified dhtOut2(DHT_PIN_OUTSIDE_2, DHT22);
 
+// Connect Vin to 3-5VDC
+// Connect GND to ground
+// Connect SCL to I2C clock pin (A5 on UNO)
+// Connect SDA to I2C data pin (A4 on UNO)
+Adafruit_HTU21DF htu = Adafruit_HTU21DF();
 
 volatile int fanRpmCounter;
 int fanRpm;
@@ -243,7 +248,6 @@ void setup() {
     pinMode(FAN_PIN_ON, OUTPUT);
     pinMode(FAN_PIN_RPM, INPUT);
     pinMode(DHT_PIN_OUTSIDE_1, INPUT_PULLUP);
-    pinMode(DHT_PIN_OUTSIDE_2, INPUT_PULLUP);
     pinMode(DHT_PIN_INSIDE, INPUT_PULLUP);
     pinMode(LED_PIN, OUTPUT);
     ledOn();
@@ -261,7 +265,7 @@ void setup() {
     lcd.setCursor(0, 0);
     lcd.print("***FanControl***");
     lcd.setCursor(0, 1);
-    lcd.print("***   2.05   ***");
+    lcd.print("***   3.01   ***");
     time = millis() - time;
     Serial.print("Took "); Serial.print(time); Serial.println(" ms");
     lcd.setBacklight(WHITE);
@@ -269,10 +273,15 @@ void setup() {
     // switch FAN off...
     digitalWrite(FAN_PIN_ON, LOW);
 
+    if (!htu.begin()) {
+      Serial.println("Couldn't find sensor!");
+    } else {
+      Serial.println("HTU21d init OK!");
+    }
+
     // Initialize device.
     dhtIn.begin();
     dhtOut1.begin();
-    dhtOut2.begin();
 
     // Print temperature sensor details.
     sensor_t sensor;
@@ -322,31 +331,14 @@ void setup() {
     Serial.print  ("Min Value:    "); Serial.print(sensor.min_value); Serial.println("%");
     Serial.print  ("Resolution:   "); Serial.print(sensor.resolution); Serial.println("%");
     Serial.println("------------------------------------");
-    dhtOut2.temperature().getSensor(&sensor);
-    Serial.println("OUTSIDE: ------------------");
-    Serial.println("Temperature");
-    Serial.print  ("Sensor:       "); Serial.println(sensor.name);
-    Serial.print  ("Driver Ver:   "); Serial.println(sensor.version);
-    Serial.print  ("Unique ID:    "); Serial.println(sensor.sensor_id);
-    Serial.print  ("Min Delay:    "); Serial.print(sensor.min_delay/1000); Serial.println(" ms");
-    Serial.print  ("Max Value:    "); Serial.print(sensor.max_value); Serial.println(" *C");
-    Serial.print  ("Min Value:    "); Serial.print(sensor.min_value); Serial.println(" *C");
-    Serial.print  ("Resolution:   "); Serial.print(sensor.resolution); Serial.println(" *C");
+
+    Serial.println("OUTSIDE (htu21d): ------------------");
+    Serial.print  ("Temperature:    "); Serial.print(htu.readTemperature()); Serial.println(" *C");
+    Serial.print  ("Humidity:       "); Serial.print(htu.readHumidity()); Serial.println("%");
     Serial.println("------------------------------------");
-    // Print humidity sensor details.
-    dhtOut2.humidity().getSensor(&sensor);
-    Serial.println("------------------------------------");
-    Serial.println("Humidity");
-    Serial.print  ("Sensor:       "); Serial.println(sensor.name);
-    Serial.print  ("Driver Ver:   "); Serial.println(sensor.version);
-    Serial.print  ("Unique ID:    "); Serial.println(sensor.sensor_id);
-    Serial.print  ("Min Delay:    "); Serial.print(sensor.min_delay/1000); Serial.println(" ms");
-    Serial.print  ("Max Value:    "); Serial.print(sensor.max_value); Serial.println("%");
-    Serial.print  ("Min Value:    "); Serial.print(sensor.min_value); Serial.println("%");
-    Serial.print  ("Resolution:   "); Serial.print(sensor.resolution); Serial.println("%");
     
     // Set delay between sensor readings based on sensor details.
-    tempCheckDelay = (sensor.min_delay / 1000) * 4;
+    tempCheckDelay = (sensor.min_delay / 1000) * 1;
 
     mode = MODE_AUTO;
     page = 1;
@@ -508,6 +500,11 @@ void controlFan() {
         absHumidityOutside = absHumidityOutside2;
         tempOutside = tempOutside2;
     }
+
+    // correct absolute humidity on the outside to a little bit higher value ...
+    // this ensures that we really only ventilate if it's quite a bit drier on the 
+    // outside than inside.
+    absHumidityOutside = absHumidityOutside + ABS_HUMIDITY_MIN_DIFF;
   
     if (mode == MODE_AUTO) {
         if (tempInside < TEMP_IN_LIMIT) {
@@ -523,7 +520,7 @@ void controlFan() {
         } else if ((humidityInside < (HUMIDTITY_LIMIT - HUMIDTITY_LIMIT_TOLERANCE)) && fanRunning) {
             fanOff();
             why = "Humi: In < ";
-            why = why + ((int)HUMIDTITY_LIMIT);
+            why = why + ((int)(HUMIDTITY_LIMIT - HUMIDTITY_LIMIT_TOLERANCE));
             why = why + "%";
         } else if ((humidityInside < HUMIDTITY_LIMIT) && !fanRunning) {
             fanOff();
@@ -607,12 +604,9 @@ void tempCheckOutside1() {
 }
 
 void tempCheckOutside2() {
-    sensors_event_t event2;
-    dhtOut2.temperature().getEvent(&event2);
-    tempOutside2 = event2.temperature;
-    dhtOut2.humidity().getEvent(&event2);
-    humidityOutside2 = event2.relative_humidity;
-
+    tempOutside2 = htu.readTemperature();
+    humidityOutside2  = htu.readHumidity();
+  
     debugTempAndHumidity(tempOutside2, humidityOutside2, "Outside2");
     
     absHumidityOutside2 = calcAbsHumidity(tempOutside2, humidityOutside2);
