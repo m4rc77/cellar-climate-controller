@@ -269,7 +269,7 @@ void setup() {
     lcd.setCursor(0, 0);
     lcd.print("***FanControl***");
     lcd.setCursor(0, 1);
-    lcd.print("***   3.03   ***");
+    lcd.print("***   3.04   ***");
     time = millis() - time;
     Serial.print("Took "); Serial.print(time); Serial.println(" ms");
     lcd.setBacklight(WHITE);
@@ -411,59 +411,59 @@ void loop() {
         lastPageSwitch  = millis();
     }
 
-    uint8_t buttons = lcd.readButtons();
-
-    // only accept buttons input if it is set and not all buttons are 
-    // indicated as pressed as this is usualy in case of an error in 
-    // readButtons().
-    if (buttons && buttons != 0x1F) {
-        // buttons & BUTTON_UP would check if up button is set but would also allow
-        // other buttons to be pressed we want that ONLY up button is pressed
-        // there fore using buttons == BUTTON_UP
-        if (buttons == BUTTON_UP) { 
-            if (mode == MODE_AUTO) {
-                mode = MODE_ON;
-                forceModeOnTime = millis();
-                Serial.println("MODE=ON");
-            } else {
-                mode = MODE_AUTO;
-                Serial.println("MODE=AUTO");
-            }
-            controlFan();
-            showFanInfoPage();
-            lastPageSwitch  = millis();
-            page = 1;
-            delay(500);
-        }
-        // See coment obove concerning buttons == BUTTON_nnn
-        if (buttons == BUTTON_DOWN) {
-            if (mode == MODE_AUTO) {
-                mode = MODE_OFF;
-                forceModeOnTime = millis();
-                Serial.println("MODE=OFF");
-            } else {
-                mode = MODE_AUTO;
-                Serial.println("MODE=AUTO");
-            }
-            controlFan();
-            showFanInfoPage();
-            lastPageSwitch  = millis();
-            page = 1;
-            delay(500);
-        }
-        // See coment obove concerning buttons == BUTTON_nnn
-        if (buttons == BUTTON_LEFT) {
-            //lcd.print("LEFT   ");
-        }
-        // See coment obove concerning buttons == BUTTON_nnn
-        if (buttons == BUTTON_RIGHT) {
-            //lcd.print("RIGHT  ");
-        }
-        // See coment obove concerning buttons == BUTTON_nnn
-        if (buttons == BUTTON_SELECT) {
-            //lcd.print("SELECT ");
-        }
-    }
+//    uint8_t buttons = lcd.readButtons();
+//
+//    // only accept buttons input if it is set and not all buttons are 
+//    // indicated as pressed as this is usualy in case of an error in 
+//    // readButtons().
+//    if (buttons && buttons != 0x1F) {
+//        // buttons & BUTTON_UP would check if up button is set but would also allow
+//        // other buttons to be pressed we want that ONLY up button is pressed
+//        // there fore using buttons == BUTTON_UP
+//        if (buttons == BUTTON_UP) { 
+//            if (mode == MODE_AUTO) {
+//                mode = MODE_ON;
+//                forceModeOnTime = millis();
+//                Serial.println("MODE=ON");
+//            } else {
+//                mode = MODE_AUTO;
+//                Serial.println("MODE=AUTO");
+//            }
+//            controlFan();
+//            showFanInfoPage();
+//            lastPageSwitch  = millis();
+//            page = 1;
+//            delay(500);
+//        }
+//        // See coment obove concerning buttons == BUTTON_nnn
+//        if (buttons == BUTTON_DOWN) {
+//            if (mode == MODE_AUTO) {
+//                mode = MODE_OFF;
+//                forceModeOnTime = millis();
+//                Serial.println("MODE=OFF");
+//            } else {
+//                mode = MODE_AUTO;
+//                Serial.println("MODE=AUTO");
+//            }
+//            controlFan();
+//            showFanInfoPage();
+//            lastPageSwitch  = millis();
+//            page = 1;
+//            delay(500);
+//        }
+//        // See coment obove concerning buttons == BUTTON_nnn
+//        if (buttons == BUTTON_LEFT) {
+//            //lcd.print("LEFT   ");
+//        }
+//        // See coment obove concerning buttons == BUTTON_nnn
+//        if (buttons == BUTTON_RIGHT) {
+//            //lcd.print("RIGHT  ");
+//        }
+//        // See coment obove concerning buttons == BUTTON_nnn
+//        if (buttons == BUTTON_SELECT) {
+//            //lcd.print("SELECT ");
+//        }
+//    }
 
     if (lastControl + CONTROL_INTERVAL <= millis()) {
         controlFan();
